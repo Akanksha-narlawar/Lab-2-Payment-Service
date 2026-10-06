@@ -1,4 +1,3 @@
-
 pipeline {
     agent any
 
@@ -37,11 +36,21 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 bat '''
+                    echo Building Docker image...
+
                     docker build -t %IMAGE_NAME%:%BUILD_NUMBER% .
-                    if errorlevel 1 exit /b 1
+
+                    if errorlevel 1 (
+                        echo Docker build FAILED.
+                        exit /b 1
+                    )
 
                     docker tag %IMAGE_NAME%:%BUILD_NUMBER% %IMAGE_NAME%:latest
-                    if errorlevel 1 exit /b 1
+
+                    if errorlevel 1 (
+                        echo Docker tag FAILED.
+                        exit /b 1
+                    )
 
                     docker images %IMAGE_NAME%
                 '''
@@ -51,18 +60,34 @@ pipeline {
         stage('Run Container') {
             steps {
                 bat '''
+                    echo Removing old test container...
+
                     docker rm -f %CONTAINER_NAME% 2>NUL || echo No existing test container
+
+                    echo Starting container...
 
                     docker run -d ^
                         --name %CONTAINER_NAME% ^
                         -p %HOST_PORT%:%CONTAINER_PORT% ^
                         %IMAGE_NAME%:%BUILD_NUMBER%
 
-                    if errorlevel 1 exit /b 1
+                    if errorlevel 1 (
+                        echo Docker container start FAILED.
+                        exit /b 1
+                    )
+
+                    echo Waiting for application...
 
                     powershell -NoProfile -Command "Start-Sleep -Seconds 5"
 
+                    echo Container status:
+
                     docker ps --filter "name=%CONTAINER_NAME%"
+
+                    if errorlevel 1 (
+                        echo Container status check FAILED.
+                        exit /b 1
+                    )
                 '''
             }
         }
@@ -73,33 +98,43 @@ pipeline {
                     echo ==============================
                     echo DOCKER PS
                     echo ==============================
+
                     docker ps -a --filter "name=%CONTAINER_NAME%"
 
                     echo ==============================
                     echo DOCKER PORT
                     echo ==============================
+
                     docker port %CONTAINER_NAME%
 
                     echo ==============================
                     echo DOCKER INSPECT
                     echo ==============================
+
                     docker inspect %CONTAINER_NAME%
 
                     echo ==============================
                     echo DOCKER TOP
                     echo ==============================
+
                     docker top %CONTAINER_NAME%
 
                     echo ==============================
                     echo DOCKER LOGS
                     echo ==============================
+
                     docker logs %CONTAINER_NAME%
 
                     echo ==============================
                     echo DOCKER EXEC
                     echo ==============================
+
                     docker exec %CONTAINER_NAME% whoami
-                    if errorlevel 1 exit /b 1
+
+                    if errorlevel 1 (
+                        echo Docker exec FAILED.
+                        exit /b 1
+                    )
                 '''
             }
         }
@@ -109,15 +144,16 @@ pipeline {
                 bat '''
                     echo Checking application health...
 
-                    curl.exe --fail http://localhost:%HOST_PORT%/health
+                    curl.exe --fail http://localhost:%HOST_PORT%/
+
                     if errorlevel 1 (
-                        echo Health check FAILED.
+                        echo Application health check FAILED.
                         docker logs %CONTAINER_NAME%
                         exit /b 1
                     )
 
                     echo.
-                    echo Health check PASSED.
+                    echo Application health check PASSED.
                 '''
             }
         }
@@ -128,6 +164,7 @@ pipeline {
                     echo Testing application endpoint...
 
                     curl.exe --fail http://localhost:%HOST_PORT%/
+
                     if errorlevel 1 (
                         echo Application test FAILED.
                         docker logs %CONTAINER_NAME%
@@ -143,11 +180,12 @@ pipeline {
         stage('Container Health Status') {
             steps {
                 bat '''
-                    echo Container health status:
+                    echo Checking Docker HEALTHCHECK status...
 
                     docker inspect %CONTAINER_NAME% --format "{{.State.Health.Status}}"
 
                     docker inspect %CONTAINER_NAME% --format "{{.State.Health.Status}}" | findstr /I "healthy"
+
                     if errorlevel 1 (
                         echo Docker HEALTHCHECK is not healthy.
                         docker logs %CONTAINER_NAME%
@@ -182,16 +220,21 @@ pipeline {
                 echo ==============================
                 echo FINAL CONTAINER STATUS
                 echo ==============================
+
                 docker ps -a
 
                 echo ==============================
                 echo FINAL IMAGE
                 echo ==============================
+
                 docker images payment-api
+
+                echo ==============================
+                echo CLEANING TEST CONTAINER
+                echo ==============================
 
                 docker rm -f %CONTAINER_NAME% 2>NUL || echo Test container already removed
             '''
         }
     }
 }
-
