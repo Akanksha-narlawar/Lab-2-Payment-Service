@@ -11,7 +11,7 @@ pipeline {
         APP_NAME = "payment-api"
         IMAGE_NAME = "payment-api"
         CONTAINER_NAME = "payment-api-test"
-        HOST_PORT = "8080"
+        HOST_PORT = "8081"
         CONTAINER_PORT = "8080"
     }
 
